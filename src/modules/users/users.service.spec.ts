@@ -42,7 +42,7 @@ describe('UsersService', () => {
         jest.clearAllMocks();
     });
 
-    // ─── create() ──────────────────────────────────────────────────
+    //  create() 
 
     describe('create()', () => {
         const createDto = {
@@ -101,7 +101,7 @@ describe('UsersService', () => {
         });
     });
 
-    // ─── findById() ────────────────────────────────────────────────
+    //  findById() 
 
     describe('findById()', () => {
         it('should return a user without passwordHash', async () => {
@@ -135,7 +135,7 @@ describe('UsersService', () => {
         });
     });
 
-    // ─── findAll() ─────────────────────────────────────────────────
+    //  findAll() 
 
     describe('findAll()', () => {
         it('should return an array of users without passwordHash', async () => {
