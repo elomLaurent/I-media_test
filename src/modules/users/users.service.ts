@@ -48,8 +48,8 @@ export class UsersService {
   }
 
 
-  private toResponseDto(user: User): UserResponseDto {
-    const { passwordHash, ...userWithoutPassword } = user;
-    return userWithoutPassword;
-  }
+ private toResponseDto(user: User): UserResponseDto {
+  const { passwordHash: _passwordHash, ...userWithoutPassword } = user;
+  return userWithoutPassword;
+}
 }
