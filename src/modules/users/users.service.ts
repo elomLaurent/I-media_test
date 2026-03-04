@@ -49,7 +49,6 @@ export class UsersService {
 
 
   private toResponseDto(user: User): UserResponseDto {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { passwordHash, ...userWithoutPassword } = user;
     return userWithoutPassword;
   }
