@@ -25,7 +25,7 @@ export class CreateUserDto {
   })
   @IsOptional()
   @IsString()
-  passwordHash?: string;
+  password?: string;
 }
 
 export class UserResponseDto {
