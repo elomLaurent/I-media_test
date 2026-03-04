@@ -48,8 +48,10 @@ export class UsersService {
   }
 
 
- private toResponseDto(user: User): UserResponseDto {
-  const { passwordHash: _passwordHash, ...userWithoutPassword } = user;
+private toResponseDto(user: User): UserResponseDto {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { passwordHash: _, ...userWithoutPassword } = user;
   return userWithoutPassword;
 }
+
 }

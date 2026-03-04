@@ -80,7 +80,8 @@ describe('UsersService', () => {
 
             await service.create(createDto);
 
-            const savedArg = mockUserRepository.save.mock.calls[0][0] as User;
+            const calls = mockUserRepository.save.mock.calls as Array<[User]>;
+            const savedArg = calls[0][0];
             expect(savedArg.passwordHash).toBeDefined();
             expect(savedArg.passwordHash).not.toBe('plainpassword123');
         });
