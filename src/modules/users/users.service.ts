@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 // import * as bcrypt from 'bcryptjs';
-import { CreateUserDto, UpdateUserDto, UserResponseDto } from './dto/user.dto';
+import { CreateUserDto, UserResponseDto } from './dto/user.dto';
 import { User } from 'src/entities/user.entity';
 
 @Injectable()
@@ -22,8 +22,6 @@ export class UsersService {
     }
 
     const user = this.userRepository.create(createUserDto);
-
-    // If a password is provided, hash it and store into passwordHash
     if ((createUserDto as any).password) {
       const bcrypt = require('bcryptjs');
       user.passwordHash = await bcrypt.hash((createUserDto as any).password, 10);
