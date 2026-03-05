@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${DB_USER:-test}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-test_password_dev}
