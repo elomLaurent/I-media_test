@@ -14,9 +14,7 @@ env:
 jobs:
 
   # ══════════════════════════════════════════════════════════════
-  # JOB 1 — TESTS (8 pts)
-  # Installation des dépendances + lint + tests unitaires
-  # Si un test échoue → exit code non-zero → pipeline stoppé
+  # JOB 1 — TESTS 
   # ══════════════════════════════════════════════════════════════
   unit-tests-and-lint:
     name: "Tests & Lint"
@@ -52,8 +50,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'            # cache node_modules entre les runs
+          node-version: '20'
+          cache: 'npm'            
 
       - name: Install dependencies
         run: npm ci
