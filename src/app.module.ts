@@ -6,6 +6,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from './entities/user.entity';
 import { validationSchema } from './config/validation';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -21,17 +22,17 @@ import { validationSchema } from './config/validation';
         type: 'postgres',
         host: configService.get<string>('DB_HOST'),
         port: configService.get<number>('DB_PORT'),
-        username: configService.get<string>('DB_USERNAME'),
+        username: configService.get<string>('DB_USER'),
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_DATABASE'),
         autoLoadEntities: true,
-        synchronize: false,
+        synchronize: true,
       }),
     }),
     TypeOrmModule.forFeature([
       User,
     ]),
-    UsersModule,],
+    UsersModule, HealthModule],
   controllers: [AppController],
   providers: [AppService],
 })

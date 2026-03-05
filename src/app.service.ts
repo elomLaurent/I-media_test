@@ -5,12 +5,7 @@ import { ConfigService } from '@nestjs/config';
 export class AppService {
   constructor(private readonly configService: ConfigService) {}
 
-  getHealth() {
-    return{
-      status: 'ok',
-      version: '1.0.0',
-      timestamp: new Date().toISOString(),
-      environment: this.configService.get<string>('NODE_ENV'),
-    };
+  getHello(): string {
+    return 'API is running';
   }
 }
