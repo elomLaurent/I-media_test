@@ -153,9 +153,7 @@ jobs:
           retention-days: 1
 
   # ══════════════════════════════════════════════════════════════
-  # JOB 3 — PUSH (10 pts + 7 pts versioning)
-  # Publication vers Docker Hub avec tagging complet
-  # Conditionné : push main OU tag Git v*
+  # JOB 3 — PUSH
   # ══════════════════════════════════════════════════════════════
   docker-push:
     name: "Push to Registry"
@@ -224,9 +222,7 @@ jobs:
           echo "> [Voir sur Docker Hub](https://hub.docker.com/r/${{ secrets.DOCKER_USERNAME }}/test-app/tags)" >> $GITHUB_STEP_SUMMARY
 
   # ══════════════════════════════════════════════════════════════
-  # JOB 4A — DEPLOY STAGING (5 pts)
-  # Déclenché sur push main uniquement
-  # Conditionné au succès du push Docker
+  # JOB 4A — DEPLOY STAGING 
   # ══════════════════════════════════════════════════════════════
   deploy-staging:
     name: "Deploy to Staging"
