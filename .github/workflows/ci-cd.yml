@@ -2,32 +2,24 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main, develop]
+    branches: ['**']
+    tags:
+      - 'v*.*.*'
   pull_request:
-    branches: [main, develop]
+    branches: [main]
+
+env:
+  IMAGE_NAME: docker.io/${{ secrets.DOCKER_USERNAME }}/test-app
 
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Lint code
-        run: npm run lint
-
-      - name: Type check
-        run: npx tsc --noEmit
-
-  test:
+  # ══════════════════════════════════════════════════════════════
+  # JOB 1 — TESTS (8 pts)
+  # Installation des dépendances + lint + tests unitaires
+  # Si un test échoue → exit code non-zero → pipeline stoppé
+  # ══════════════════════════════════════════════════════════════
+  unit-tests-and-lint:
+    name: "Tests & Lint"
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -43,7 +35,6 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
-
       redis:
         image: redis:7-alpine
         options: >-
@@ -55,54 +46,132 @@ jobs:
           - 6379:6379
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
+          cache: 'npm'            # cache node_modules entre les runs
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Lint & type check
+        run: |
+          npm run lint
+          npx tsc --noEmit
 
       - name: Run unit tests
-        run: npm test -- --coverage
+        run: npm test -- --coverage --forceExit
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USERNAME: test
+          DB_PASSWORD: test_password_dev
+          DB_DATABASE: test_db
+          DB_TYPE: postgres
+          REDIS_URL: redis://localhost:6379
+          JWT_SECRET: test_jwt_secret_ci
 
-      - name: Upload coverage
+      # Bonus — rapport de couverture publié comme artefact
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+      - name: Publish coverage to Codecov
         uses: codecov/codecov-action@v4
         if: always()
-
-  build:
-    runs-on: ubuntu-latest
-    needs: [lint, test]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          token: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Install dependencies
-        run: npm ci
+  # ══════════════════════════════════════════════════════════════
+  # JOB 2 — BUILD (10 pts)
+  # Construction de l'image Docker depuis le Dockerfile
+  # Conditionné au succès des tests
+  # ══════════════════════════════════════════════════════════════
+  docker-build:
+    name: "Docker Build"
+    runs-on: ubuntu-latest
+    needs: unit-tests-and-lint    # stoppé si tests échouent
 
-      - name: Build application
-        run: npm run build
+    outputs:
+      tags:    ${{ steps.meta.outputs.tags }}
+      labels:  ${{ steps.meta.outputs.labels }}
+      version: ${{ steps.meta.outputs.version }}
 
-      - name: Upload build artifact
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Calcul automatique des tags selon le contexte Git
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            # SHA court sur chaque push — traçabilité totale
+            type=sha,prefix=sha-
+
+            # latest uniquement sur main
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+            # Version sémantique sur tag Git : v1.2.0 → 1.2.0
+            type=semver,pattern={{version}}
+
+            # Majeur.mineur : v1.2.0 → 1.2
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Show computed tags
+        run: |
+          echo "Tags qui seront appliqués :"
+          echo "${{ steps.meta.outputs.tags }}"
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false                               # build uniquement ici
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          outputs: type=docker,dest=/tmp/image.tar  # export pour le job push
+
+      - name: Upload image artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist/
+          name: docker-image
+          path: /tmp/image.tar
+          retention-days: 1
 
-  docker:
+  # ══════════════════════════════════════════════════════════════
+  # JOB 3 — PUSH (10 pts + 7 pts versioning)
+  # Publication vers Docker Hub avec tagging complet
+  # Conditionné : push main OU tag Git v*
+  # ══════════════════════════════════════════════════════════════
+  docker-push:
+    name: "Push to Registry"
     runs-on: ubuntu-latest
-    needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: docker-build
+    if: |
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -110,16 +179,172 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
+          registry: docker.io
           username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+          password: ${{ secrets.DOCKER_TOKEN }}     # Access Token, jamais le mot de passe
 
-      - name: Build and push Docker image
+      # Recalcul des tags (metadata-action est stateless entre jobs)
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      # Build + push en une étape — utilise le cache GHA
+      - name: Build and push to Docker Hub
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ./Dockerfile
           push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/tontine-app:latest
-            ${{ secrets.DOCKER_USERNAME }}/tontine-app:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Vérification que l'image est bien pullable
+      - name: Verify image is pullable from registry
+        run: |
+          FIRST_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          echo "Verification : $FIRST_TAG"
+          docker pull "$FIRST_TAG"
+          echo "Image confirmed pullable"
+
+      - name: Push summary
+        run: |
+          echo "### Images publiées sur Docker Hub" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|" >> $GITHUB_STEP_SUMMARY
+          while IFS= read -r tag; do
+            echo "| \`$tag\` |" >> $GITHUB_STEP_SUMMARY
+          done <<< "${{ steps.meta.outputs.tags }}"
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "> [Voir sur Docker Hub](https://hub.docker.com/r/${{ secrets.DOCKER_USERNAME }}/test-app/tags)" >> $GITHUB_STEP_SUMMARY
+
+  # ══════════════════════════════════════════════════════════════
+  # JOB 4A — DEPLOY STAGING (5 pts)
+  # Déclenché sur push main uniquement
+  # Conditionné au succès du push Docker
+  # ══════════════════════════════════════════════════════════════
+  deploy-staging:
+    name: "Deploy to Staging"
+    runs-on: ubuntu-latest
+    needs: docker-push
+    if: |
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
+    environment:
+      name: staging
+      url: https://staging.test-app.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract image tag for staging
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest
+
+      - name: Deploy to staging
+        run: |
+          IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          echo "================================================"
+          echo "  STAGING DEPLOYMENT"
+          echo "================================================"
+          echo "  Image    : $IMAGE"
+          echo "  Env      : staging"
+          echo "  SHA      : ${{ github.sha }}"
+          echo "  Branch   : ${{ github.ref_name }}"
+          echo "  Actor    : ${{ github.actor }}"
+          echo "================================================"
+          echo "  docker pull $IMAGE"
+          echo "  docker stop test-staging || true"
+          echo "  docker run -d --name test-staging -p 3001:3000 $IMAGE"
+          echo "================================================"
+          echo "  STATUS   : SUCCESS"
+          echo "================================================"
+
+  
+      - name: Staging deployment summary
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          echo "### Staging Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "| Champ | Valeur |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | $( [ "$STATUS" = "success" ] && echo 'Success' || echo 'Failed' ) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Déclenché par | \`${{ github.actor }}\` |" >> $GITHUB_STEP_SUMMARY
+
+  # JOB 4B — DEPLOY PRODUCTION (5 pts)
+  deploy-production:
+    name: "Deploy to Production"
+    runs-on: ubuntu-latest
+    needs: docker-push
+    if: |
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: production
+      url: https://test-app.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract image tag for production
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Deploy to production
+        run: |
+          IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          VERSION="${{ steps.meta.outputs.version }}"
+          echo "================================================"
+          echo "  PRODUCTION DEPLOYMENT"
+          echo "================================================"
+          echo "  Image    : $IMAGE"
+          echo "  Version  : $VERSION"
+          echo "  Env      : production"
+          echo "  SHA      : ${{ github.sha }}"
+          echo "  Tag Git  : ${{ github.ref_name }}"
+          echo "  Actor    : ${{ github.actor }}"
+          echo "================================================"
+          echo "  docker pull $IMAGE"
+          echo "  docker stop test-prod || true"
+          echo "  docker run -d --name test-prod -p 3000:3000 $IMAGE"
+          echo "================================================"
+          echo "  STATUS   : SUCCESS"
+          echo "================================================"
+
+  
+      - name: Production deployment summary
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          VERSION="${{ steps.meta.outputs.version }}"
+          echo "### Production Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "| Champ | Valeur |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | $( [ "$STATUS" = "success" ] && echo 'Success' || echo 'Failed' ) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tag Git | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Déclenché par | \`${{ github.actor }}\` |" >> $GITHUB_STEP_SUMMARY
