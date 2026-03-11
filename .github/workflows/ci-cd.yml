@@ -2,22 +2,19 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: ['**']
+    branches: ["**"]
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
   pull_request:
     branches: [main]
 
-# ✅ Plus de env global avec secrets — inutilisable à ce niveau
-
 jobs:
-
   unit-tests-and-lint:
     name: "Tests & Lint"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:15-alpine
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test_password_dev
@@ -46,8 +43,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -86,11 +83,11 @@ jobs:
 
   docker-build:
     name: "Docker Build"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: unit-tests-and-lint
     outputs:
-      tags:    ${{ steps.meta.outputs.tags }}
-      labels:  ${{ steps.meta.outputs.labels }}
+      tags: ${{ steps.meta.outputs.tags }}
+      labels: ${{ steps.meta.outputs.labels }}
       version: ${{ steps.meta.outputs.version }}
 
     steps:
@@ -104,7 +101,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # ✅ secrets résolu ici — dans un step, c'est autorisé
+          # ✅ secrets résolu ici - dans un step, c'est autorisé
           images: docker.io/${{ secrets.DOCKER_USERNAME }}/test-app
           tags: |
             type=sha,prefix=sha-
@@ -138,7 +135,7 @@ jobs:
 
   docker-push:
     name: "Push to Registry"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: docker-build
     if: |
       github.event_name == 'push' &&
@@ -200,7 +197,7 @@ jobs:
 
   deploy-staging:
     name: "Deploy to Staging"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: docker-push
     if: |
       github.event_name == 'push' &&
@@ -254,7 +251,7 @@ jobs:
 
   deploy-production:
     name: "Deploy to Production"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: docker-push
     if: |
       github.event_name == 'push' &&
